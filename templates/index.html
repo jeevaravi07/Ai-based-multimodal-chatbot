@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Differential — case-report console</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+  <div class="frame">
+
+    <aside class="console">
+      <div class="console-head">
+        <h1>Differential</h1>
+        <p class="tagline">Local case-report retrieval &amp; symptom checker. No API key, nothing leaves this machine.</p>
+      </div>
+
+      {% if not ready %}
+      <div class="notice">
+        Indices not built yet. Run <code>python scripts/build_index.py</code>, then reload this page.
+      </div>
+      {% endif %}
+
+      <form id="query-form" class="query-form">
+        <label for="message">Describe symptoms</label>
+        <textarea id="message" name="message" rows="4"
+          placeholder="e.g. itching and skin rash with nodal skin eruptions"></textarea>
+
+        <label for="image" class="file-label">
+          <span id="file-name">Attach a case image (optional)</span>
+          <input type="file" id="image" name="image" accept=".png,.jpg,.jpeg,.webp,.bmp">
+        </label>
+
+        <button type="submit" id="submit-btn" {{ "disabled" if not ready else "" }}>Run query</button>
+      </form>
+
+      <div class="console-foot">
+        <span class="dot"></span> case-report RAG &nbsp;&nbsp; <span class="dot amber"></span> symptom checker
+      </div>
+    </aside>
+
+    <main class="log" id="log">
+      <div class="log-empty" id="log-empty">
+        Entries will appear here as a running case log — newest at the top.
+      </div>
+    </main>
+
+  </div>
+
+<script>
+const form = document.getElementById('query-form');
+const log = document.getElementById('log');
+const logEmpty = document.getElementById('log-empty');
+const imageInput = document.getElementById('image');
+const fileName = document.getElementById('file-name');
+const submitBtn = document.getElementById('submit-btn');
+
+imageInput.addEventListener('change', () => {
+  fileName.textContent = imageInput.files.length
+    ? imageInput.files[0].name
+    : 'Attach a case image (optional)';
+});
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function renderEntry(query, data) {
+  const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  let html = `<article class="entry">`;
+  html += `<div class="entry-head"><span class="entry-time">${time}</span><span class="entry-query">${escapeHtml(query || '(image only)')}</span></div>`;
+
+  if (data.uploaded_image_url) {
+    html += `<img class="entry-image" src="${data.uploaded_image_url}" alt="uploaded case image">`;
+    if (data.predicted_modality) {
+      html += `<div class="modality-tag">Predicted scan type: ${escapeHtml(data.predicted_modality)}</div>`;
+    }
+  }
+
+  if (data.symptom_check) {
+    const sc = data.symptom_check;
+    html += `<div class="panel symptom">
+      <div class="panel-title">Symptom checker <span class="conf">${Math.round(sc.confidence*100)}% confidence</span></div>
+      <div class="disease-name">${escapeHtml(sc.disease)}</div>
+      <p class="desc">${escapeHtml(sc.description || '')}</p>
+      <div class="matched">Matched: ${sc.matched_symptoms.map(escapeHtml).join(', ')}</div>
+      ${sc.precautions && sc.precautions.length ? `<ul class="precautions">${sc.precautions.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>` : ''}
+      ${sc.alternatives && sc.alternatives.length ? `<div class="alts">Also consider: ${sc.alternatives.map(a => escapeHtml(a.disease)).join(', ')}</div>` : ''}
+    </div>`;
+  } else if (data.used_text && !data.symptom_check) {
+    html += `<div class="panel symptom muted">No symptoms in the fixed 132-term vocabulary were recognized in that text.</div>`;
+  }
+
+  if (data.case_matches && data.case_matches.length) {
+    html += `<div class="panel cases">
+      <div class="panel-title">Closest case reports</div>
+      <ol class="case-list">`;
+    data.case_matches.forEach(c => {
+      html += `<li>
+        <div class="case-id-row"><span class="case-id">${escapeHtml(c.case_id)}${c.exact_filename_match ? ' <span class=\"exact-tag\">exact dataset match</span>' : ''}</span><span class="case-modality">${escapeHtml(c.modality)}</span></div>
+        <p class="case-summary">${escapeHtml(c.summary)}</p>
+      </li>`;
+    });
+    html += `</ol></div>`;
+  }
+
+  html += `</article>`;
+  return html;
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const message = document.getElementById('message').value.trim();
+  const hasImage = imageInput.files.length > 0;
+  if (!message && !hasImage) return;
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Running…';
+
+  const fd = new FormData();
+  fd.append('message', message);
+  if (hasImage) fd.append('image', imageInput.files[0]);
+
+  try {
+    const res = await fetch('/chat', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Request failed');
+    }
+    logEmpty.style.display = 'none';
+    log.insertAdjacentHTML('afterbegin', renderEntry(message, data));
+    form.reset();
+    fileName.textContent = 'Attach a case image (optional)';
+  } catch (err) {
+    logEmpty.style.display = 'none';
+    log.insertAdjacentHTML('afterbegin',
+      `<article class="entry"><div class="panel error">${escapeHtml(err.message)}</div></article>`);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Run query';
+  }
+});
+</script>
+</body>
+</html>

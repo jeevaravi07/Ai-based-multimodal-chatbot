@@ -1,0 +1,7 @@
+flask
+pandas
+scikit-learn
+faiss-cpu
+pillow
+networkx
+joblib
