@@ -1,80 +1,83 @@
-# Medical_RAG_Chatbot — Differential
+Medical_RAG_Chatbot — Differential
 
-Two independent local pipelines behind one chat box. No API key, no LLM,
-nothing leaves the machine.
+A fully local, privacy-first healthcare chatbot powered by two independent machine learning pipelines operating behind a single chat interface.
 
-1. **Case-report RAG** — upload an image or describe symptoms, get the
-   closest matching case reports from `data/cases.csv` (TF-IDF+SVD text
-   embeddings / a handcrafted image descriptor, both indexed with FAISS,
-   summarized with an extractive TextRank summarizer).
-2. **Symptom checker** — type symptoms, get a direct disease name +
-   description + precautions, from a RandomForest trained on
-   `data/symptom_checker/` (41 diseases, 132 symptoms; source:
-   [itachi9604/healthcare-chatbot](https://github.com/itachi9604/healthcare-chatbot),
-   itself a mirror of the Kaggle disease-symptom-description dataset).
+Zero API keys. No external LLMs. 100% on-premise execution.
 
-The two never get confused with each other: the case-report RAG answers
-*"which past case report reads like this?"*; the symptom checker answers
-*"what is this called, and what's the standard advice?"*.
+🧠 System Architecture
 
-## Run it
+The application routes user queries through two distinct, non-overlapping pipelines to ensure accurate, context-appropriate responses:
 
-```bash
+1. Case-Report RAG (Retrieval-Augmented Generation)
+
+Answers the question: "Which past case report reads like this?"
+
+Input: Text description of symptoms or an uploaded medical image.
+
+Engine: Text is embedded using TF-IDF + SVD. Images use a 512-dimensional handcrafted image descriptor.
+
+Retrieval & Output: Queries are matched against data/cases.csv via a FAISS vector index and summarized using an extractive TextRank summarizer (bypassing the need for generative LLMs).
+
+2. Symptom Checker
+
+Answers the question: "What is this condition called, and what is the standard advice?"
+
+Input: Direct symptom keywords.
+
+Engine: A Random Forest classifier trained on 41 diseases and 132 symptoms (sourced via itachi9604/healthcare-chatbot, mirroring the Kaggle disease-symptom dataset).
+
+Output: Predicts the disease name and provides standard medical descriptions and recommended precautions.
+
+🚀 Getting Started
+
+Prerequisites
+
+Ensure you have Python installed, then install the required dependencies:
+
 pip install -r requirements.txt
-python scripts/build_index.py   # one-time (or whenever data/ changes)
+
+
+Build & Run
+
+Build the Index: Run this one-time setup script to generate the FAISS indices and train the models (run this again anytime your data/ folder changes).
+
+python scripts/build_index.py
+
+
+Start the Application:
+
 python app.py
-```
 
-Then open `http://127.0.0.1:5000`.
 
-## Project layout
+Open your browser and navigate to http://127.0.0.1:5000.
 
-```
+📂 Project Structure
+
 Medical_RAG_Chatbot/
-├── app.py                     Flask app — the /chat endpoint
-├── config.py                  all paths + settings, one place to change them
-├── requirements.txt
+├── app.py                      # Flask app — the /chat endpoint
+├── config.py                   # Centralized paths and system settings
+├── requirements.txt            # Python dependencies
 │
 ├── data/
-│   ├── cases.csv               your MultiCaRe-style case reports (image_name, article_id, case_id, case_text)
-│   ├── images/                 the 331 raw case images you provided
-│   ├── images_sorted/          auto-generated: same images, sorted into X-ray/CT/MRI/Ultrasound/... folders
-│   └── symptom_checker/        Training.csv, Testing.csv, symptom_Description.csv, symptom_precaution.csv, Symptom_severity.csv
+│   ├── cases.csv               # MultiCaRe-style case reports (image_name, article_id, case_id, case_text)
+│   ├── images/                 # Raw case images (331 total)
+│   ├── images_sorted/          # Auto-generated: Images sorted by modality (X-ray, CT, MRI, Ultrasound, etc.)
+│   └── symptom_checker/        # Training/Testing CSVs, disease descriptions, and precautions
 │
 ├── rag/
-│   ├── prepare_data.py         splits case_text into CARE sections, detects+sorts scan type
-│   ├── text_embeddings.py      TF-IDF + SVD encoder for case text
-│   ├── vector_store.py         FAISS index build/save/load + metadata
-│   ├── image_retriever.py      handcrafted image descriptor + modality classifier
-│   ├── retriever.py            ties the above together: retrieve_by_text / retrieve_by_image
-│   ├── summarizer.py           extractive TextRank summarizer (no LLM)
-│   └── symptom_checker.py      the independent symptom -> disease pipeline
+│   ├── prepare_data.py         # Splits case_text into CARE sections, detects/sorts scan types
+│   ├── text_embeddings.py      # TF-IDF + SVD encoder for case text
+│   ├── vector_store.py         # FAISS index build/save/load + metadata handling
+│   ├── image_retriever.py      # Handcrafted image descriptor + modality classifier
+│   ├── retriever.py            # Core retrieval logic (retrieve_by_text / retrieve_by_image)
+│   ├── summarizer.py           # Extractive TextRank summarizer
+│   └── symptom_checker.py      # Independent symptom-to-disease RF pipeline
 │
 ├── scripts/
-│   └── build_index.py          one command, runs all 4 build steps in order
+│   └── build_index.py          # Unified script executing all 4 build steps in sequence
 │
-├── templates/index.html        chat UI
-├── static/css/style.css
-├── static/uploads/              uploaded images land here at request time
-├── vector_db/                  cases_text.faiss, cases_image.faiss, metadata.pkl
-└── models/                     tfidf_vectorizer, svd_reducer, modality_classifier,
-                                 symptom_checker_classifier + its feature list
-```
-
-## Notes / known limits
-
-- `data/cases.csv` has 331 rows across 243 unique cases and no clean
-  "diagnosis" column of its own — that's exactly why the symptom checker
-  above is a *separate* dataset that does have clean disease labels,
-  rather than trying to extract a diagnosis field from free narrative text.
-- Scan-type detection (`prepare_data.py`) is keyword-based on the case
-  narrative, not a trained image classifier at *build* time — but the
-  modality classifier trained in step 3 of the build *does* predict scan
-  type from the image itself at request time, which is what the app uses.
-- `IMAGE_ENCODER_MODE` is pinned to `"handcrafted"` in `config.py` on
-  purpose: it's a 512-dim descriptor with no downloaded weights, so build
-  time and request time can never disagree on the vector's dimensionality.
-- The symptom checker only recognizes its fixed vocabulary of 132 symptom
-  phrases (e.g. `skin_rash`, `high_fever`). Free text outside that
-  vocabulary (e.g. "I feel a bit off") returns no match — that's a
-  deliberate refusal to guess, not a bug.
+├── templates/index.html        # Web chat UI
+├── static/css/style.css        # UI styling
+├── static/uploads/             # Temporary storage for request-time image uploads
+├── vector_db/                  # Compiled FAISS indices (cases_text.faiss, cases_image.faiss) and metadata
+└── models/                     # Saved models (tfidf_vectorizer, svd_reducer, classifiers)
