@@ -20,7 +20,7 @@ import config
 from rag import retriever, symptom_checker
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB uploads
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  
 
 
 def _allowed_file(filename: str) -> bool:
@@ -55,7 +55,7 @@ def chat():
     saved_image_path = None
     original_filename = None
     if image_file and image_file.filename and _allowed_file(image_file.filename):
-        original_filename = image_file.filename  # used only for the exact-match lookup below
+        original_filename = image_file.filename
         ext = original_filename.rsplit(".", 1)[1].lower()
         fname = f"{uuid.uuid4().hex}.{ext}"
         saved_image_path = os.path.join(config.UPLOAD_DIR, fname)
