@@ -10,7 +10,7 @@ The application routes user queries through two distinct, non-overlapping pipeli
 
 1. Case-Report RAG (Retrieval-Augmented Generation)
 
-Answers the question: "Which past case report reads like this?"
+Answers the question: "Which past case report reads like this"?
 
 Input: Text description of symptoms or an uploaded medical image.
 
@@ -20,7 +20,7 @@ Retrieval & Output: Queries are matched against data/cases.csv via a FAISS vecto
 
 2. Symptom Checker
 
-Answers the question: "What is this condition called, and what is the standard advice?"
+Answers the question: "What is this condition called, and what is the standard advice"?
 
 Input: Direct symptom keywords.
 
